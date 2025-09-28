@@ -1,5 +1,6 @@
-
 # src/app/streamlit_app.py
+from pathlib import Path
+import sys
 import os
 from io import BytesIO
 from datetime import datetime
@@ -15,6 +16,11 @@ from sklearn.metrics import (
 )
 from sklearn.calibration import calibration_curve
 
+# Ensure project imports work on Streamlit Cloud
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from src.data.fetch import get_prices_cached, get_fred_series_cached
 from src.features.engineer import compute_weekly_returns, to_weekly_last, assemble_panel
 from src.models.regimes import fit_hmm, align_regimes
@@ -26,7 +32,8 @@ from src.utils.plotting import regime_heatmap
 # ---------------- UI CHROME ----------------
 st.set_page_config(page_title="Macro-Regime S&P 500", page_icon="📈", layout="wide")
 
-st.markdown("""
+st.markdown(
+    """
 <style>
 /* Layout & typography */
 .main .block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1400px; }
@@ -50,14 +57,12 @@ h1, h2, h3 { letter-spacing: .2px; }
 /* Buttons */
 .stButton>button { border-radius: 10px; }
 
-/* === Sidebar restyle === */
+/* Sidebar restyle */
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
   border-right: 1px solid rgba(255,255,255,0.08);
 }
-[data-testid="stSidebar"] * {
-  color: #e5e7eb !important;
-}
+[data-testid="stSidebar"] * { color: #e5e7eb !important; }
 [data-testid="stSidebar"] .sidebar-title {
   font-weight: 800; font-size: 1.1rem; letter-spacing: .3px; margin: .25rem 0 1rem 0;
   background: linear-gradient(90deg,#93c5fd 0%, #c4b5fd 100%);
@@ -67,7 +72,9 @@ h1, h2, h3 { letter-spacing: .2px; }
 /* Tiny legend dots */
 .legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ---------------- SIDEBAR (Lab Controls) ----------------
 with st.sidebar:
@@ -77,7 +84,7 @@ with st.sidebar:
     start_date = st.date_input("Backtest start", value=pd.to_datetime("1999-01-01"))
     trans_cost_bps = st.number_input("Transaction cost (bps)", 0, 100, 5, step=1)
     turnover_cap = st.slider("Turnover cap", 0.0, 1.0, 1.0, step=0.05)
-    n_states = st.selectbox("HMM regimes", [2,3,4], index=1)
+    n_states = st.selectbox("HMM regimes", [2, 3, 4], index=1)
     embargo_weeks = st.number_input("Embargo (weeks)", 0, 12, 4)
     test_size_weeks = st.number_input("Test size per fold (weeks)", 52, 260, 104, step=52)
     n_splits = st.number_input("CV splits", 2, 10, 6)
@@ -89,11 +96,12 @@ DATA_CACHE = "data_cache"
 os.makedirs(DATA_CACHE, exist_ok=True)
 
 @st.cache_data(ttl=3600, show_spinner=True)
-def load_panel(start_date_str: str):
+def load_panel(start_date_str: str) -> pd.DataFrame:
+    """Fetches & builds the modeling panel (weekly)."""
     prices = get_prices_cached(symbol="^GSPC", start=start_date_str, cache_path=f"{DATA_CACHE}/prices.csv")
-    fred_list = ["DGS2","DGS10","T10Y2Y","CPIAUCSL","UNRATE","INDPRO","FEDFUNDS","T5YIFR","BAA10Y","TB3MS"]
+    fred_list = ["DGS2", "DGS10", "T10Y2Y", "CPIAUCSL", "UNRATE", "INDPRO", "FEDFUNDS", "T5YIFR", "BAA10Y", "TB3MS"]
     fred = get_fred_series_cached(fred_list, start="1960-01-01", cache_path=f"{DATA_CACHE}/fred.csv")
-    pw = compute_weekly_returns(prices)   # close, ret_w, rv_w
+    pw = compute_weekly_returns(prices)  # adds: 'ret_w', 'rv_w', next week's 'excess_ret_next'
     fw = to_weekly_last(fred).interpolate(limit_direction="both")
     panel = assemble_panel(pw, fw).dropna()
     panel = panel[panel.index >= pd.to_datetime(start_date_str)]
@@ -105,7 +113,7 @@ if refresh:
 panel = load_panel(start_date.strftime("%Y-%m-%d"))
 
 # ---------------- REGIMES ----------------
-hmm_model, regimes = fit_hmm(panel, n_states=int(n_states), covariance_type="full", feature_cols=("ret_w","rv_w"))
+hmm_model, regimes = fit_hmm(panel, n_states=int(n_states), covariance_type="full", feature_cols=("ret_w", "rv_w"))
 panel["regime"] = align_regimes(panel.index, regimes)
 
 # ---------------- FEATURES/TARGET ----------------
@@ -131,7 +139,12 @@ for tr_idx, te_idx in rolling_windows(len(X), int(n_splits), int(test_size_weeks
     ex_ret = panel["excess_ret_next"].reindex(dates_te)
     bt = backtest_directional(dates_te, proba, ex_ret, trans_cost_bps=int(trans_cost_bps), turnover_cap=float(turnover_cap))
 
-    rows.append({**metrics, "cumret": bt["equity"].iloc[-1]-1, "start": str(dates_te[0].date()), "end": str(dates_te[-1].date())})
+    rows.append({
+        **metrics,
+        "cumret": bt["equity"].iloc[-1] - 1,
+        "start": str(dates_te[0].date()),
+        "end": str(dates_te[-1].date()),
+    })
     equity_concat.append(bt["equity"])
     oof_proba.append(pd.Series(proba, index=dates_te, name="p_up"))
     oof_y.append(pd.Series(y_te.values, index=dates_te, name="y"))
@@ -147,18 +160,18 @@ st.caption(f"Last updated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}. Re
 c1, c2, c3, c4 = st.columns(4)
 span = f"{panel.index.min().date()} → {panel.index.max().date()}"
 with c1:
-    st.markdown('<div class="card"><div class="kpi">Data span</div><div class="kpi-sub">'+span+f'<br/>Rows: {len(panel):,}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="card"><div class="kpi">Data span</div><div class="kpi-sub">{span}<br/>Rows: {len(panel):,}</div></div>', unsafe_allow_html=True)
 with c2:
     st.markdown(
         f'<div class="card"><div class="kpi">{cv_df["auc"].mean():.3f}</div><div class="kpi-sub">Mean AUC</div></div>'
         if len(cv_df) else '<div class="card"><div class="kpi">—</div><div class="kpi-sub">Mean AUC</div></div>',
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 with c3:
     st.markdown(
         f'<div class="card"><div class="kpi">{cv_df["acc"].mean():.3f}</div><div class="kpi-sub">Mean ACC</div></div>'
         if len(cv_df) else '<div class="card"><div class="kpi">—</div><div class="kpi-sub">Mean ACC</div></div>',
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 with c4:
     val = f"{cv_df['cumret'].iloc[-1]:.2%}" if len(cv_df) else "—"
@@ -181,7 +194,6 @@ with tab0:
             return "DOWN", "🔴", "#ef4444", "Model sees lower chance of gains vs cash."
         return "UNCERTAIN", "🟡", "#f59e0b", "Edge isn’t clear; staying in cash is reasonable."
 
-    # Train on all but last, predict the last (live week)
     if len(X) > 60:
         model = make_baseline()
         X_train, y_train = X.iloc[:-1], y.iloc[:-1]
@@ -189,7 +201,6 @@ with tab0:
         _, proba_live = fit_predict(model, X_train, y_train, X_live)
         p = float(proba_live[0])
 
-        # Simple neutral band for beginners (you can tweak)
         lo, hi = 0.45, 0.55
         label, emoji, color, note = verdict_from_p(p, lo, hi)
         confidence = min(100, abs(p - 0.5) * 200)  # 0–100
@@ -212,10 +223,8 @@ with tab0:
             unsafe_allow_html=True,
         )
 
-        # Confidence bar
         st.progress(int(confidence), text="Confidence")
 
-        # Tiny trend sparkline (last 12 months)
         tail = panel["ret_w"].dropna().tail(52)
         if len(tail):
             fig_b, ax_b = plt.subplots(figsize=(8, 2.0))
@@ -224,17 +233,6 @@ with tab0:
             ax_b.set_title("Recent momentum (sparkline)")
             ax_b.grid(True, alpha=.2)
             st.pyplot(fig_b, use_container_width=True)
-
-        # Plain-English explainer
-        with st.expander("What does this mean (in simple terms)?", expanded=False):
-            st.markdown(
-                """
-                - We use past weekly market behavior and macro context to estimate the chance the S&P 500 **beats cash** next week.
-                - If the chance is **high** → we say **UP**; **low** → **DOWN**; in-between → **UNCERTAIN**.
-                - Confidence just measures how far from 50/50 the model is.
-                - This is a learning tool. **Do not trade** based on this.
-                """
-            )
     else:
         st.info("Not enough history yet to produce a simple outlook.")
 
@@ -251,15 +249,22 @@ with tab1:
         '<span class="legend-dot" style="background:#60a5fa"></span>Regime 2',
         unsafe_allow_html=True,
     )
-    runs = (regs.ne(regs.shift()).cumsum().groupby(regs).transform('size'))
+    runs = (regs.ne(regs.shift()).cumsum().groupby(regs).transform("size"))
     dur = pd.DataFrame({"regime": regs.values, "duration": runs.values}, index=regs.index)
-    st.caption("Median regime duration (weeks): " +
-               ", ".join([f"{i}: {int(dur[regs==i]['duration'].median())}" for i in sorted(regs.unique())]))
-    k = int(n_states); trans = np.zeros((k,k), dtype=int); r = regs.values
-    for i in range(len(r)-1): trans[r[i], r[i+1]] += 1
-    fig_t, ax_t = plt.subplots(figsize=(4.5,3.6)); im = ax_t.imshow(trans, aspect="auto")
+    st.caption(
+        "Median regime duration (weeks): "
+        + ", ".join([f"{i}: {int(dur[regs==i]['duration'].median())}" for i in sorted(regs.unique())])
+    )
+    k = int(n_states)
+    trans = np.zeros((k, k), dtype=int)
+    r = regs.values
+    for i in range(len(r) - 1):
+        trans[r[i], r[i + 1]] += 1
+    fig_t, ax_t = plt.subplots(figsize=(4.5, 3.6))
+    im = ax_t.imshow(trans, aspect="auto")
     for i in range(k):
-        for j in range(k): ax_t.text(j, i, str(trans[i,j]), ha="center", va="center", fontsize=10)
+        for j in range(k):
+            ax_t.text(j, i, str(trans[i, j]), ha="center", va="center", fontsize=10)
     ax_t.set_xlabel("Next state"); ax_t.set_ylabel("Current state"); ax_t.set_title("Transitions")
     fig_t.colorbar(im, ax=ax_t, fraction=0.046, pad=0.04)
     st.pyplot(fig_t, use_container_width=False)
@@ -289,14 +294,11 @@ with tab2:
             y_score = oof_proba.values
 
             # --- ROC / PR / Calibration ---
-            from sklearn.metrics import (
-                roc_curve, auc, precision_recall_curve,
-                average_precision_score, roc_auc_score
-            )
+            from sklearn.metrics import roc_auc_score
             fpr, tpr, _ = roc_curve(y_true, y_score); roc_auc = auc(fpr, tpr)
             prec, rec, _ = precision_recall_curve(y_true, y_score)
             ap = average_precision_score(y_true, y_score)
-            prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy='quantile')
+            prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy="quantile")
 
             fig_r, ax_r = plt.subplots(figsize=(5, 4))
             ax_r.plot(fpr, tpr); ax_r.plot([0, 1], [0, 1], "--")
@@ -316,15 +318,15 @@ with tab2:
             # --- Rolling AUC (robust to pandas 2.x) ---
             oof_df = pd.DataFrame(
                 {"y": oof_y.loc[oof_proba.index].astype(int), "p": oof_proba},
-                index=oof_proba.index
+                index=oof_proba.index,
             ).sort_index()
 
             def rolling_auc_series(y: pd.Series, p: pd.Series, window: int = 26) -> pd.Series:
                 vals, idxs = [], []
                 n = len(y)
                 for i in range(window, n + 1):
-                    yy = y.iloc[i - window:i]
-                    pp = p.iloc[i - window:i]
+                    yy = y.iloc[i - window : i]
+                    pp = p.iloc[i - window : i]
                     if yy.nunique() < 2 or pp.isna().any():
                         vals.append(np.nan)
                     else:
@@ -346,46 +348,69 @@ with tab2:
             best_t = float(ts[int(np.argmax(accs))])
             st.caption(f"Suggested threshold (max OOF accuracy): **{best_t:.2f}**")
 
-            sig = pd.DataFrame({"p_up": y_score, "y": y_true},
-                               index=oof_proba.index).sort_index()
+            sig = pd.DataFrame({"p_up": y_score, "y": y_true}, index=oof_proba.index).sort_index()
             st.download_button("⬇️ OOF signals (CSV)", data=sig.to_csv(),
                                file_name="signals_oof.csv", mime="text/csv")
-
         except Exception as e:
             st.warning(f"Diagnostics skipped due to: {type(e).__name__}: {e}")
-
 
 # ---- Prediction (Simplified) ----
 with tab3:
     st.subheader("Next-week simplified decision")
-    def suggest_threshold(y_true: np.ndarray, y_score: np.ndarray) -> float:
-        if y_true is None or y_score is None or len(y_true) == 0: return 0.50
-        ts = np.linspace(0.45, 0.55, 21); accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
+
+    def suggest_threshold(y_true_arr: np.ndarray, y_score_arr: np.ndarray) -> float:
+        if y_true_arr is None or y_score_arr is None or len(y_true_arr) == 0:
+            return 0.50
+        ts = np.linspace(0.45, 0.55, 21)
+        accs = [(y_true_arr == (y_score_arr >= t).astype(int)).mean() for t in ts]
         return float(ts[int(np.argmax(accs))])
+
     if len(X) > 60:
         model = make_baseline()
         X_train, y_train = X.iloc[:-1], y.iloc[:-1]
         X_live = X.iloc[[-1]]
         _, proba_live = fit_predict(model, X_train, y_train, X_live)
         p = float(proba_live[0])
+
         threshold = user_threshold
         if abs(user_threshold - 0.50) < 1e-9 and len(oof_y) and len(oof_proba):
             threshold = suggest_threshold(oof_y.loc[oof_proba.index].values, oof_proba.values)
+
         action = "LONG" if p >= threshold else "FLAT"
         confidence = min(100.0, abs(p - 0.5) * 200)
-        cols = st.columns([1,1,1])
+
+        cols = st.columns([1, 1, 1])
         with cols[0]:
-            st.markdown(f'<div class="card"><div class="kpi">{p:.2%}</div><div class="kpi-sub">P(Excess Return &gt; 0)</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="card"><div class="kpi">{p:.2%}</div>'
+                f'<div class="kpi-sub">P(Excess Return &gt; 0)</div></div>',
+                unsafe_allow_html=True,
+            )
         with cols[1]:
-            st.markdown(f'<div class="card"><div class="kpi">{threshold:.2f}</div><div class="kpi-sub">Decision threshold</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="card"><div class="kpi">{threshold:.2f}</div>'
+                f'<div class="kpi-sub">Decision threshold</div></div>',
+                unsafe_allow_html=True,
+            )
         with cols[2]:
-            st.markdown(f'<div class="card"><div class="kpi">{action}</div><div class="kpi-sub">Action (confidence {confidence:.0f}%)</div></div>', unsafe_allow_html=True)
-        st.caption(f"Current regime: **{int(panel['regime'].iloc[-1])}** · Turnover cap {turnover_cap:.2f} · Costs {trans_cost_bps} bps")
+            st.markdown(
+                f'<div class="card"><div class="kpi">{action}</div>'
+                f'<div class="kpi-sub">Action (confidence {confidence:.0f}%)</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        st.caption(
+            f"Current regime: **{int(panel['regime'].iloc[-1])}** · "
+            f"Turnover cap {turnover_cap:.2f} · Costs {trans_cost_bps} bps"
+        )
+
         tail = panel["ret_w"].dropna().tail(52)
         if len(tail):
-            fig3, ax3 = plt.subplots(figsize=(8,1.8))
-            ax3.plot((1+tail).cumprod().values); ax3.set_yticks([]); ax3.set_xticks([])
-            ax3.set_title("Recent momentum (sparkline)"); ax3.grid(True, alpha=.2)
+            fig3, ax3 = plt.subplots(figsize=(8, 1.8))
+            ax3.plot((1 + tail).cumprod().values)
+            ax3.set_yticks([]); ax3.set_xticks([])
+            ax3.set_title("Recent momentum (sparkline)")
+            ax3.grid(True, alpha=.2)
             st.pyplot(fig3, use_container_width=True)
     else:
         st.info("Not enough history to produce a live signal.")
@@ -393,13 +418,15 @@ with tab3:
 # ---- Details ----
 with tab4:
     st.subheader("About this project")
-    st.markdown("""
+    st.markdown(
+        """
 **Macro-Regime Aware Index Forecasts** is a research prototype that:
 - pulls **S&P 500** prices and **FRED** macro series,
 - builds weekly features, estimates **HMM** regimes,
 - uses walk-forward splits to avoid look-ahead,
 - and outputs an **OOF equity** and a simple weekly probability.
-""")
+"""
+    )
     st.markdown("### Important")
     st.warning("This is a learning tool. **Do not** make investment decisions with it.")
     st.caption("© Your Lab — for education & experimentation.")
