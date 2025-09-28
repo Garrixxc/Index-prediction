@@ -165,7 +165,78 @@ with c4:
     st.markdown(f'<div class="card"><div class="kpi">{val}</div><div class="kpi-sub">CumRet (last fold)</div></div>', unsafe_allow_html=True)
 
 # ---------------- TABS ----------------
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Performance & QA", "Prediction (Simplified)", "Details"])
+tab0, tab1, tab2, tab3, tab4 = st.tabs(
+    ["Beginner", "Overview", "Performance & QA", "Prediction (Simplified)", "Details"]
+)
+
+# ---- Beginner (plain language) ----
+with tab0:
+    st.subheader("Beginner view — This week’s market outlook")
+
+    def verdict_from_p(p: float, lo: float = 0.45, hi: float = 0.55):
+        """Return (label, emoji, color, note)."""
+        if p >= hi:
+            return "UP", "🟢", "#16a34a", "Model sees higher chance of gains vs cash."
+        if p <= lo:
+            return "DOWN", "🔴", "#ef4444", "Model sees lower chance of gains vs cash."
+        return "UNCERTAIN", "🟡", "#f59e0b", "Edge isn’t clear; staying in cash is reasonable."
+
+    # Train on all but last, predict the last (live week)
+    if len(X) > 60:
+        model = make_baseline()
+        X_train, y_train = X.iloc[:-1], y.iloc[:-1]
+        X_live = X.iloc[[-1]]
+        _, proba_live = fit_predict(model, X_train, y_train, X_live)
+        p = float(proba_live[0])
+
+        # Simple neutral band for beginners (you can tweak)
+        lo, hi = 0.45, 0.55
+        label, emoji, color, note = verdict_from_p(p, lo, hi)
+        confidence = min(100, abs(p - 0.5) * 200)  # 0–100
+
+        st.markdown(
+            f"""
+            <div class="card" style="border-color: rgba(255,255,255,.12);">
+              <div style="font-size:2.2rem; font-weight:800; color:{color};">
+                {emoji} This week: {label}
+              </div>
+              <div style="opacity:.85; margin-top:.25rem;">
+                Probability of beating cash next week: <b>{p:.2%}</b> · Confidence: <b>{confidence:.0f}%</b><br/>
+                {note}
+              </div>
+              <div style="font-size:.85rem; opacity:.7; margin-top:.25rem;">
+                (We call it <b>UP</b> if P ≥ {hi:.2f}, <b>DOWN</b> if P ≤ {lo:.2f}, otherwise <b>UNCERTAIN</b>.)
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Confidence bar
+        st.progress(int(confidence), text="Confidence")
+
+        # Tiny trend sparkline (last 12 months)
+        tail = panel["ret_w"].dropna().tail(52)
+        if len(tail):
+            fig_b, ax_b = plt.subplots(figsize=(8, 2.0))
+            ax_b.plot((1 + tail).cumprod().values)
+            ax_b.set_yticks([]); ax_b.set_xticks([])
+            ax_b.set_title("Recent momentum (sparkline)")
+            ax_b.grid(True, alpha=.2)
+            st.pyplot(fig_b, use_container_width=True)
+
+        # Plain-English explainer
+        with st.expander("What does this mean (in simple terms)?", expanded=False):
+            st.markdown(
+                """
+                - We use past weekly market behavior and macro context to estimate the chance the S&P 500 **beats cash** next week.
+                - If the chance is **high** → we say **UP**; **low** → **DOWN**; in-between → **UNCERTAIN**.
+                - Confidence just measures how far from 50/50 the model is.
+                - This is a learning tool. **Do not trade** based on this.
+                """
+            )
+    else:
+        st.info("Not enough history yet to produce a simple outlook.")
 
 # ---- Overview ----
 with tab1:
@@ -180,24 +251,15 @@ with tab1:
         '<span class="legend-dot" style="background:#60a5fa"></span>Regime 2',
         unsafe_allow_html=True,
     )
-
-    # Regime duration (rough)
     runs = (regs.ne(regs.shift()).cumsum().groupby(regs).transform('size'))
     dur = pd.DataFrame({"regime": regs.values, "duration": runs.values}, index=regs.index)
     st.caption("Median regime duration (weeks): " +
                ", ".join([f"{i}: {int(dur[regs==i]['duration'].median())}" for i in sorted(regs.unique())]))
-
-    # Transition matrix
-    k = int(n_states)
-    trans = np.zeros((k,k), dtype=int)
-    r = regs.values
-    for i in range(len(r)-1):
-        trans[r[i], r[i+1]] += 1
-    fig_t, ax_t = plt.subplots(figsize=(4.5,3.6))
-    im = ax_t.imshow(trans, aspect="auto")
+    k = int(n_states); trans = np.zeros((k,k), dtype=int); r = regs.values
+    for i in range(len(r)-1): trans[r[i], r[i+1]] += 1
+    fig_t, ax_t = plt.subplots(figsize=(4.5,3.6)); im = ax_t.imshow(trans, aspect="auto")
     for i in range(k):
-        for j in range(k):
-            ax_t.text(j, i, str(trans[i,j]), ha="center", va="center", fontsize=10)
+        for j in range(k): ax_t.text(j, i, str(trans[i,j]), ha="center", va="center", fontsize=10)
     ax_t.set_xlabel("Next state"); ax_t.set_ylabel("Current state"); ax_t.set_title("Transitions")
     fig_t.colorbar(im, ax=ax_t, fraction=0.046, pad=0.04)
     st.pyplot(fig_t, use_container_width=False)
@@ -206,92 +268,56 @@ with tab1:
 with tab2:
     st.subheader("Cross-validation by time")
     st.dataframe(cv_df, use_container_width=True)
-
     if len(equity_concat):
         eq = pd.concat(equity_concat).sort_index()
         fig2, ax2 = plt.subplots(figsize=(11,4))
         ax2.plot(eq.index, eq.values); ax2.set_title("Equity Curve (out-of-fold concatenated)"); ax2.grid(True)
         st.pyplot(fig2, use_container_width=True)
-
         st.download_button("⬇️ CV report (CSV)", data=cv_df.to_csv(index=False), file_name="cv_report.csv", mime="text/csv")
         buf = BytesIO(); fig2.savefig(buf, format="png", dpi=160); buf.seek(0)
         st.download_button("⬇️ Equity chart (PNG)", data=buf, file_name="equity_oof.png", mime="image/png")
 
-    # OOF diagnostics
     if len(oof_proba) and len(oof_y):
-        y_true = oof_y.loc[oof_proba.index].values
-        y_score = oof_proba.values
-
-        # ROC & PR
+        y_true = oof_y.loc[oof_proba.index].values; y_score = oof_proba.values
+        from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, roc_auc_score
         fpr, tpr, _ = roc_curve(y_true, y_score); roc_auc = auc(fpr, tpr)
         prec, rec, _ = precision_recall_curve(y_true, y_score); ap = average_precision_score(y_true, y_score)
-
-        fig_r, ax_r = plt.subplots(figsize=(5,4)); ax_r.plot(fpr, tpr); ax_r.plot([0,1],[0,1],"--"); ax_r.set_title(f"ROC (AUC={roc_auc:.3f})"); ax_r.set_xlabel("FPR"); ax_r.set_ylabel("TPR"); ax_r.grid(True)
-        fig_p, ax_p = plt.subplots(figsize=(5,4)); ax_p.plot(rec, prec); ax_p.set_title(f"Precision-Recall (AP={ap:.3f})"); ax_p.set_xlabel("Recall"); ax_p.set_ylabel("Precision"); ax_p.grid(True)
-
-        # Calibration
         prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy='quantile')
-        fig_c, ax_c = plt.subplots(figsize=(5,4)); ax_c.plot(prob_pred, prob_true, marker="o"); ax_c.plot([0,1],[0,1],"--"); ax_c.set_title("Calibration"); ax_c.set_xlabel("Predicted"); ax_c.set_ylabel("Observed"); ax_c.grid(True)
-
+        fig_r, ax_r = plt.subplots(figsize=(5,4)); ax_r.plot(fpr, tpr); ax_r.plot([0,1],[0,1],"--"); ax_r.set_title(f"ROC (AUC={roc_auc:.3f})"); ax_r.grid(True)
+        fig_p, ax_p = plt.subplots(figsize=(5,4)); ax_p.plot(rec, prec); ax_p.set_title(f"Precision-Recall (AP={ap:.3f})"); ax_p.grid(True)
+        fig_c, ax_c = plt.subplots(figsize=(5,4)); ax_c.plot(prob_pred, prob_true, marker="o"); ax_c.plot([0,1],[0,1],"--"); ax_c.set_title("Calibration"); ax_c.grid(True)
         st.pyplot(fig_r); st.pyplot(fig_p); st.pyplot(fig_c)
-
-        # Rolling AUC (26-week window)
-        try:
-            from sklearn.metrics import roc_auc_score
-            oof_df = pd.DataFrame({"y": y_true, "p": y_score}, index=oof_proba.index).sort_index()
-            def _roll_auc(sub):
-                yy = sub["y"].astype(int).values
-                pp = sub["p"].values
-                if np.isnan(pp).any() or len(np.unique(yy)) < 2:
-                    return np.nan
-                return roc_auc_score(yy, pp)
-            roll = oof_df.rolling(26).apply(_roll_auc, raw=False)
-            fig_roll, ax_roll = plt.subplots(figsize=(10,3)); ax_roll.plot(roll.index, roll["y"]); ax_roll.set_title("Rolling AUC (26 weeks)"); ax_roll.grid(True)
-            st.pyplot(fig_roll, use_container_width=True)
-        except Exception:
-            pass
-
-        # OOF probability distribution
-        st.markdown("**OOF probability distribution**")
-        fig_hist, ax_hist = plt.subplots(figsize=(6,3)); ax_hist.hist(y_score, bins=20); ax_hist.set_title("P(Up) histogram (OOF)"); ax_hist.grid(True)
-        st.pyplot(fig_hist)
-
-        # Auto-suggest threshold (max OOF accuracy)
-        ts = np.linspace(0.45, 0.55, 21)
-        accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
-        best_t = float(ts[int(np.argmax(accs))])
-        st.caption(f"Suggested threshold (max OOF accuracy): **{best_t:.2f}**")
-
-        # Download OOF signals
+        oof_df = pd.DataFrame({"y": y_true, "p": y_score}, index=oof_proba.index).sort_index()
+        def _roll_auc(sub):
+            yy = sub["y"].astype(int).values; pp = sub["p"].values
+            if np.isnan(pp).any() or len(np.unique(yy)) < 2: return np.nan
+            return roc_auc_score(yy, pp)
+        roll = oof_df.rolling(26).apply(_roll_auc, raw=False)
+        fig_roll, ax_roll = plt.subplots(figsize=(10,3)); ax_roll.plot(roll.index, roll["y"]); ax_roll.set_title("Rolling AUC (26 weeks)"); ax_roll.grid(True)
+        st.pyplot(fig_roll, use_container_width=True)
+        ts = np.linspace(0.45, 0.55, 21); accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
+        best_t = float(ts[int(np.argmax(accs))]); st.caption(f"Suggested threshold (max OOF accuracy): **{best_t:.2f}**")
         sig = pd.DataFrame({"p_up": y_score, "y": y_true}, index=oof_proba.index).sort_index()
         st.download_button("⬇️ OOF signals (CSV)", data=sig.to_csv(), file_name="signals_oof.csv", mime="text/csv")
 
 # ---- Prediction (Simplified) ----
 with tab3:
     st.subheader("Next-week simplified decision")
-
     def suggest_threshold(y_true: np.ndarray, y_score: np.ndarray) -> float:
         if y_true is None or y_score is None or len(y_true) == 0: return 0.50
-        ts = np.linspace(0.45, 0.55, 21)
-        accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
+        ts = np.linspace(0.45, 0.55, 21); accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
         return float(ts[int(np.argmax(accs))])
-
-    # Train on all but last, predict last
     if len(X) > 60:
         model = make_baseline()
         X_train, y_train = X.iloc[:-1], y.iloc[:-1]
         X_live = X.iloc[[-1]]
         _, proba_live = fit_predict(model, X_train, y_train, X_live)
         p = float(proba_live[0])
-
-        # Prefer user threshold; if user left at exactly 0.50 and we have OOF, auto-suggest
         threshold = user_threshold
         if abs(user_threshold - 0.50) < 1e-9 and len(oof_y) and len(oof_proba):
             threshold = suggest_threshold(oof_y.loc[oof_proba.index].values, oof_proba.values)
-
         action = "LONG" if p >= threshold else "FLAT"
-        confidence = min(100.0, abs(p - 0.5) * 200)  # 0–100 scale
-
+        confidence = min(100.0, abs(p - 0.5) * 200)
         cols = st.columns([1,1,1])
         with cols[0]:
             st.markdown(f'<div class="card"><div class="kpi">{p:.2%}</div><div class="kpi-sub">P(Excess Return &gt; 0)</div></div>', unsafe_allow_html=True)
@@ -300,13 +326,11 @@ with tab3:
         with cols[2]:
             st.markdown(f'<div class="card"><div class="kpi">{action}</div><div class="kpi-sub">Action (confidence {confidence:.0f}%)</div></div>', unsafe_allow_html=True)
         st.caption(f"Current regime: **{int(panel['regime'].iloc[-1])}** · Turnover cap {turnover_cap:.2f} · Costs {trans_cost_bps} bps")
-
-        # Context sparkline (last 52 weeks equity proxy)
         tail = panel["ret_w"].dropna().tail(52)
         if len(tail):
             fig3, ax3 = plt.subplots(figsize=(8,1.8))
-            ax3.plot((1+tail).cumprod().values)
-            ax3.set_yticks([]); ax3.set_xticks([]); ax3.set_title("Recent momentum (sparkline)"); ax3.grid(True, alpha=.2)
+            ax3.plot((1+tail).cumprod().values); ax3.set_yticks([]); ax3.set_xticks([])
+            ax3.set_title("Recent momentum (sparkline)"); ax3.grid(True, alpha=.2)
             st.pyplot(fig3, use_container_width=True)
     else:
         st.info("Not enough history to produce a live signal.")
@@ -317,47 +341,10 @@ with tab4:
     st.markdown("""
 **Macro-Regime Aware Index Forecasts** is a research prototype that:
 - pulls **S&P 500** prices and **FRED** macro series,
-- builds weekly features (returns, realized-vol, macro spreads, growth & inflation proxies),
-- estimates **Hidden Markov Model (HMM)** regimes,
-- and trains a simple, CPU-friendly baseline classifier with **walk-forward** splits,
-- producing an **out-of-fold equity curve** and a **live weekly probability** of positive excess return.
-
-**Why regimes?** Markets cycle. Regimes give context for *when* a signal is likely to work, help avoid overfitting, and inform position sizing.
+- builds weekly features, estimates **HMM** regimes,
+- uses walk-forward splits to avoid look-ahead,
+- and outputs an **OOF equity** and a simple weekly probability.
 """)
-
-    st.markdown("### How to use")
-    st.markdown("""
-1. **Overview** → scan the regime ribbon. Stable bands suggest more consistent behavior.
-2. **Performance & QA** → review OOF equity **and** diagnostics (ROC/PR, calibration, rolling AUC).
-3. **Prediction (Simplified)** → uses your threshold to output a clear **LONG/FLAT** action.
-4. Adjust the **Macro-Regime Lab — Controls** (left) to test regimes, window sizes, costs, and embargo.
-""")
-
-    st.markdown("### Data & methods")
-    st.markdown("""
-- **Data:** Yahoo Finance (^GSPC) for prices; FRED (e.g., DGS2/DGS10, T10Y2Y, CPIAUCSL, UNRATE, INDPRO, FEDFUNDS, T5YIFR, BAA10Y, TB3MS).
-- **Features:** return (`ret_w`), realized vol proxy (`rv_w`), term/credit spreads, growth & inflation proxies, policy rate, expectations.
-- **Regimes:** Gaussian **HMM** (k=2–4). Regime series aligned to the full index with ffill/bfill.
-- **Validation:** Time-ordered **rolling windows** with **embargo**. Metrics are **out-of-fold** only.
-- **Backtest:** Directional long/flat with turnover cap and transaction costs (bps), applied to **excess** returns.
-""")
-
-    st.markdown("### Limitations & caveats")
-    st.warning("""
-This is **research**, not production trading software. Do **not** make investment decisions with it.
-- Data is from public sources; quality, revisions, and outages can affect results.
-- HMM labels are **unsupervised** and may shift with new data.
-- Walk-forward OOF helps, but **past performance is not indicative of future results**.
-- No execution modeling, portfolio constraints, risk budgeting, or capacity limits are included.
-""")
-
-    st.markdown("### Next steps (ideas)")
-    st.markdown("""
-- Add **XGBoost + SHAP** for factor attribution per regime  
-- **Rolling exposure/turnover** charts and stability diagnostics  
-- **PDF weekly brief** export with KPIs and charts  
-- **ALFRED vintages** for true real-time macro backtests  
-""")
-
-    st.caption("Built for learning and experimentation. © Your Lab · MIT-style research spirit.")
-
+    st.markdown("### Important")
+    st.warning("This is a learning tool. **Do not** make investment decisions with it.")
+    st.caption("© Your Lab — for education & experimentation.")
