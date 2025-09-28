@@ -1,0 +1,33 @@
+# Global configuration for data & modeling
+symbol: "^GSPC"
+rf_series: "TB3MS"        # 3-Month T-Bill (monthly), will be converted to weekly rate
+fred_series:
+  DGS2: "2-Year Treasury Constant Maturity Rate"
+  DGS10: "10-Year Treasury Constant Maturity Rate"
+  T10Y2Y: "10Y-2Y Treasury Yield Spread"
+  CPIAUCSL: "CPI All Urban Consumers, SA"
+  UNRATE: "Unemployment Rate"
+  INDPRO: "Industrial Production Index"
+  FEDFUNDS: "Effective Federal Funds Rate"
+  T5YIFR: "5-Year, 5-Year Forward Inflation Expectation Rate"
+  BAA10Y: "Moody's BAA - 10Y Treasury Spread"
+  TB3MS: "3-Month Treasury Bill: Secondary Market Rate"
+frequency:
+  prices: "1d"
+  macro_agg: "W-FRI"
+  target_horizon_weeks: 1
+backtest:
+  start_date: "1999-01-01"
+  end_date: null
+  trans_cost_bps: 5          # round-trip 10 bps
+  turnover_cap: 1.0          # max absolute change in weight per week
+cv:
+  n_splits: 6
+  test_size_weeks: 104
+  embargo_weeks: 4
+hmm:
+  n_states: 3
+  covariance_type: full
+  features: [ret_w, rv_w]
+
+

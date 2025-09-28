@@ -1,0 +1,18 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+yfinance
+fredapi
+hmmlearn
+statsmodels
+pyyaml
+tqdm
+shap
+# Optional deep learning (comment out if you don't need TFT now)
+# torch
+# pytorch-lightning
+# pytorch-forecasting
+# xgboost
+streamlit
+Pillow
