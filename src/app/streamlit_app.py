@@ -268,37 +268,92 @@ with tab1:
 with tab2:
     st.subheader("Cross-validation by time")
     st.dataframe(cv_df, use_container_width=True)
+
     if len(equity_concat):
         eq = pd.concat(equity_concat).sort_index()
-        fig2, ax2 = plt.subplots(figsize=(11,4))
-        ax2.plot(eq.index, eq.values); ax2.set_title("Equity Curve (out-of-fold concatenated)"); ax2.grid(True)
+        fig2, ax2 = plt.subplots(figsize=(11, 4))
+        ax2.plot(eq.index, eq.values)
+        ax2.set_title("Equity Curve (out-of-fold concatenated)")
+        ax2.grid(True)
         st.pyplot(fig2, use_container_width=True)
-        st.download_button("⬇️ CV report (CSV)", data=cv_df.to_csv(index=False), file_name="cv_report.csv", mime="text/csv")
+        st.download_button("⬇️ CV report (CSV)", data=cv_df.to_csv(index=False),
+                           file_name="cv_report.csv", mime="text/csv")
         buf = BytesIO(); fig2.savefig(buf, format="png", dpi=160); buf.seek(0)
-        st.download_button("⬇️ Equity chart (PNG)", data=buf, file_name="equity_oof.png", mime="image/png")
+        st.download_button("⬇️ Equity chart (PNG)", data=buf,
+                           file_name="equity_oof.png", mime="image/png")
 
     if len(oof_proba) and len(oof_y):
-        y_true = oof_y.loc[oof_proba.index].values; y_score = oof_proba.values
-        from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, roc_auc_score
-        fpr, tpr, _ = roc_curve(y_true, y_score); roc_auc = auc(fpr, tpr)
-        prec, rec, _ = precision_recall_curve(y_true, y_score); ap = average_precision_score(y_true, y_score)
-        prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy='quantile')
-        fig_r, ax_r = plt.subplots(figsize=(5,4)); ax_r.plot(fpr, tpr); ax_r.plot([0,1],[0,1],"--"); ax_r.set_title(f"ROC (AUC={roc_auc:.3f})"); ax_r.grid(True)
-        fig_p, ax_p = plt.subplots(figsize=(5,4)); ax_p.plot(rec, prec); ax_p.set_title(f"Precision-Recall (AP={ap:.3f})"); ax_p.grid(True)
-        fig_c, ax_c = plt.subplots(figsize=(5,4)); ax_c.plot(prob_pred, prob_true, marker="o"); ax_c.plot([0,1],[0,1],"--"); ax_c.set_title("Calibration"); ax_c.grid(True)
-        st.pyplot(fig_r); st.pyplot(fig_p); st.pyplot(fig_c)
-        oof_df = pd.DataFrame({"y": y_true, "p": y_score}, index=oof_proba.index).sort_index()
-        def _roll_auc(sub):
-            yy = sub["y"].astype(int).values; pp = sub["p"].values
-            if np.isnan(pp).any() or len(np.unique(yy)) < 2: return np.nan
-            return roc_auc_score(yy, pp)
-        roll = oof_df.rolling(26).apply(_roll_auc, raw=False)
-        fig_roll, ax_roll = plt.subplots(figsize=(10,3)); ax_roll.plot(roll.index, roll["y"]); ax_roll.set_title("Rolling AUC (26 weeks)"); ax_roll.grid(True)
-        st.pyplot(fig_roll, use_container_width=True)
-        ts = np.linspace(0.45, 0.55, 21); accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
-        best_t = float(ts[int(np.argmax(accs))]); st.caption(f"Suggested threshold (max OOF accuracy): **{best_t:.2f}**")
-        sig = pd.DataFrame({"p_up": y_score, "y": y_true}, index=oof_proba.index).sort_index()
-        st.download_button("⬇️ OOF signals (CSV)", data=sig.to_csv(), file_name="signals_oof.csv", mime="text/csv")
+        try:
+            # Align OOF arrays
+            y_true = oof_y.loc[oof_proba.index].astype(int).values
+            y_score = oof_proba.values
+
+            # --- ROC / PR / Calibration ---
+            from sklearn.metrics import (
+                roc_curve, auc, precision_recall_curve,
+                average_precision_score, roc_auc_score
+            )
+            fpr, tpr, _ = roc_curve(y_true, y_score); roc_auc = auc(fpr, tpr)
+            prec, rec, _ = precision_recall_curve(y_true, y_score)
+            ap = average_precision_score(y_true, y_score)
+            prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy='quantile')
+
+            fig_r, ax_r = plt.subplots(figsize=(5, 4))
+            ax_r.plot(fpr, tpr); ax_r.plot([0, 1], [0, 1], "--")
+            ax_r.set_title(f"ROC (AUC={roc_auc:.3f})"); ax_r.grid(True)
+
+            fig_p, ax_p = plt.subplots(figsize=(5, 4))
+            ax_p.plot(rec, prec)
+            ax_p.set_title(f"Precision-Recall (AP={ap:.3f})"); ax_p.grid(True)
+
+            fig_c, ax_c = plt.subplots(figsize=(5, 4))
+            ax_c.plot(prob_pred, prob_true, marker="o")
+            ax_c.plot([0, 1], [0, 1], "--")
+            ax_c.set_title("Calibration"); ax_c.grid(True)
+
+            st.pyplot(fig_r); st.pyplot(fig_p); st.pyplot(fig_c)
+
+            # --- Rolling AUC (robust to pandas 2.x) ---
+            oof_df = pd.DataFrame(
+                {"y": oof_y.loc[oof_proba.index].astype(int), "p": oof_proba},
+                index=oof_proba.index
+            ).sort_index()
+
+            def rolling_auc_series(y: pd.Series, p: pd.Series, window: int = 26) -> pd.Series:
+                vals, idxs = [], []
+                n = len(y)
+                for i in range(window, n + 1):
+                    yy = y.iloc[i - window:i]
+                    pp = p.iloc[i - window:i]
+                    if yy.nunique() < 2 or pp.isna().any():
+                        vals.append(np.nan)
+                    else:
+                        vals.append(roc_auc_score(yy.values, pp.values))
+                    idxs.append(y.index[i - 1])
+                return pd.Series(vals, index=idxs, name="roll_auc")
+
+            roll = rolling_auc_series(oof_df["y"], oof_df["p"], window=26)
+
+            fig_roll, ax_roll = plt.subplots(figsize=(10, 3))
+            ax_roll.plot(roll.index, roll.values)
+            ax_roll.set_title("Rolling AUC (26 weeks)")
+            ax_roll.grid(True)
+            st.pyplot(fig_roll, use_container_width=True)
+
+            # --- Threshold suggestion & OOF export ---
+            ts = np.linspace(0.45, 0.55, 21)
+            accs = [(y_true == (y_score >= t).astype(int)).mean() for t in ts]
+            best_t = float(ts[int(np.argmax(accs))])
+            st.caption(f"Suggested threshold (max OOF accuracy): **{best_t:.2f}**")
+
+            sig = pd.DataFrame({"p_up": y_score, "y": y_true},
+                               index=oof_proba.index).sort_index()
+            st.download_button("⬇️ OOF signals (CSV)", data=sig.to_csv(),
+                               file_name="signals_oof.csv", mime="text/csv")
+
+        except Exception as e:
+            st.warning(f"Diagnostics skipped due to: {type(e).__name__}: {e}")
+
 
 # ---- Prediction (Simplified) ----
 with tab3:
