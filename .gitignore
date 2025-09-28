@@ -11,7 +11,8 @@ venv/
 # App/data artifacts (generated)
 data_cache/
 reports/
-.streamlit/
+.streamlit/*
+!.streamlit/config.toml
 signals_oof.csv
 
 # Local env/secrets

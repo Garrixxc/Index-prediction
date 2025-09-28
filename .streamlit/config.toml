@@ -1,0 +1,6 @@
+[server]
+fileWatcherType = "none"   # stop using inotify
+runOnSave = false
+
+[theme]
+base = "dark"
