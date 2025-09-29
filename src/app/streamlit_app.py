@@ -75,7 +75,7 @@ h1, h2, h3 { letter-spacing: .2px; }
 
 # =============================== SIDEBAR ===============================
 with st.sidebar:
-    st.markdown('<div class="sidebar-title">🎛️ Macro-Regime Lab — Controls</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">🎛️ Macro-Regime Lab - Controls</div>', unsafe_allow_html=True)
     st.caption("Tune research settings. Changes affect CV, backtest costs, and the live preview.")
 
     start_date = st.date_input("Backtest start", value=pd.to_datetime("1999-01-01"))
@@ -154,7 +154,7 @@ oof_proba = (pd.concat(oof_proba).sort_index() if oof_proba else pd.Series([], d
 oof_y = (pd.concat(oof_y).sort_index().astype(int) if oof_y else pd.Series([], dtype=int))
 
 # =============================== HEADER + KPIs ===============================
-st.markdown('<div class="title-gradient">📈 Macro-Regime Aware Index Forecasts — S&P 500 (Weekly)</div>', unsafe_allow_html=True)
+st.markdown('<div class="title-gradient">📈 Macro-Regime Aware Index Forecasts - S&P 500 (Weekly)</div>', unsafe_allow_html=True)
 st.caption(f"Last updated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}. Research tool — not investment advice.")
 
 c1, c2, c3, c4 = st.columns(4)
