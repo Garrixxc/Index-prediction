@@ -1,4 +1,3 @@
-
 # src/app/streamlit_app.py
 from pathlib import Path
 import sys
@@ -12,12 +11,11 @@ import matplotlib.pyplot as plt
 import streamlit as st
 
 from sklearn.metrics import (
-    roc_curve, auc,
-    precision_recall_curve, average_precision_score,
+    roc_curve, auc, precision_recall_curve, average_precision_score, roc_auc_score
 )
 from sklearn.calibration import calibration_curve
 
-# --- ensure repo root is on sys.path for "src.*" imports (works on Streamlit Cloud) ---
+# --- make repo root importable on Streamlit Cloud ---
 ROOT = Path(__file__).resolve().parents[2]  # repo/
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -135,9 +133,11 @@ for tr_idx, te_idx in rolling_windows(len(X), int(n_splits), int(test_size_weeks
     metrics = evaluate_cls(y_te, proba)
 
     ex_ret = panel["excess_ret_next"].reindex(dates_te)
-    bt = backtest_directional(dates_te, proba, ex_ret,
-                              trans_cost_bps=int(trans_cost_bps),
-                              turnover_cap=float(turnover_cap))
+    bt = backtest_directional(
+        dates_te, proba, ex_ret,
+        trans_cost_bps=int(trans_cost_bps),
+        turnover_cap=float(turnover_cap)
+    )
 
     rows.append({
         **metrics,
@@ -290,7 +290,6 @@ with tab2:
                            file_name="equity_oof.png", mime="image/png")
 
     if len(oof_proba) and len(oof_y):
-        from sklearn.metrics import roc_auc_score
         try:
             # Align OOF arrays
             y_true = oof_y.loc[oof_proba.index].astype(int).values
@@ -317,7 +316,7 @@ with tab2:
 
             st.pyplot(fig_r); st.pyplot(fig_p); st.pyplot(fig_c)
 
-            # --- Rolling AUC (manual, pandas-2.x safe) ---
+            # --- Rolling AUC (pandas-2.x safe manual window) ---
             oof_df = pd.DataFrame(
                 {"y": oof_y.loc[oof_proba.index].astype(int), "p": oof_proba},
                 index=oof_proba.index,
@@ -327,19 +326,19 @@ with tab2:
                 vals, idxs = [], []
                 n = len(y_ser)
                 for i in range(window, n + 1):
-                    yy = y_ser.iloc[i - window:i]
-                    pp = p_ser.iloc[i - window:i]
+                    yy = y_ser.iloc[i-window:i]
+                    pp = p_ser.iloc[i-window:i]
                     if yy.nunique() < 2 or pp.isna().any():
                         vals.append(np.nan)
                     else:
                         vals.append(roc_auc_score(yy.values, pp.values))
-                    idxs.append(y_ser.index[i - 1])
+                    idxs.append(y_ser.index[i-1])
                 return pd.Series(vals, index=idxs, name="roll_auc")
 
             roll = rolling_auc_series(oof_df["y"], oof_df["p"], window=26)
 
             fig_roll, ax_roll = plt.subplots(figsize=(10, 3))
-            ax_roll.plot(roll.index, roll.values)  # <- Series.values (no ["y"])
+            ax_roll.plot(roll.index, roll.values)  # note: .values (no ["y"])
             ax_roll.set_title("Rolling AUC (26 weeks)")
             ax_roll.grid(True)
             st.pyplot(fig_roll, use_container_width=True)
