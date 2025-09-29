@@ -1,3 +1,4 @@
+
 # src/app/streamlit_app.py
 from pathlib import Path
 import sys
@@ -16,8 +17,8 @@ from sklearn.metrics import (
 )
 from sklearn.calibration import calibration_curve
 
-# Ensure project imports work on Streamlit Cloud
-ROOT = Path(__file__).resolve().parents[2]
+# --- ensure repo root is on sys.path for "src.*" imports (works on Streamlit Cloud) ---
+ROOT = Path(__file__).resolve().parents[2]  # repo/
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -29,13 +30,11 @@ from src.evaluate.backtest import backtest_directional
 from src.utils.cv import rolling_windows
 from src.utils.plotting import regime_heatmap
 
-# ---------------- UI CHROME ----------------
+# =============================== UI CHROME ===============================
 st.set_page_config(page_title="Macro-Regime S&P 500", page_icon="📈", layout="wide")
-
 st.markdown(
     """
 <style>
-/* Layout & typography */
 .main .block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1400px; }
 h1, h2, h3 { letter-spacing: .2px; }
 
@@ -76,7 +75,7 @@ h1, h2, h3 { letter-spacing: .2px; }
     unsafe_allow_html=True,
 )
 
-# ---------------- SIDEBAR (Lab Controls) ----------------
+# =============================== SIDEBAR ===============================
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🎛️ Macro-Regime Lab — Controls</div>', unsafe_allow_html=True)
     st.caption("Tune research settings. Changes affect CV, backtest costs, and the live preview.")
@@ -91,17 +90,16 @@ with st.sidebar:
     user_threshold = st.slider("Decision threshold (LONG if P(Up) ≥ threshold)", 0.40, 0.60, 0.50, 0.01)
     refresh = st.button("🔄 Update & Predict (fetch latest)")
 
-# ---------------- DATA ----------------
+# =============================== DATA ===============================
 DATA_CACHE = "data_cache"
 os.makedirs(DATA_CACHE, exist_ok=True)
 
 @st.cache_data(ttl=3600, show_spinner=True)
 def load_panel(start_date_str: str) -> pd.DataFrame:
-    """Fetches & builds the modeling panel (weekly)."""
     prices = get_prices_cached(symbol="^GSPC", start=start_date_str, cache_path=f"{DATA_CACHE}/prices.csv")
     fred_list = ["DGS2", "DGS10", "T10Y2Y", "CPIAUCSL", "UNRATE", "INDPRO", "FEDFUNDS", "T5YIFR", "BAA10Y", "TB3MS"]
     fred = get_fred_series_cached(fred_list, start="1960-01-01", cache_path=f"{DATA_CACHE}/fred.csv")
-    pw = compute_weekly_returns(prices)  # adds: 'ret_w', 'rv_w', next week's 'excess_ret_next'
+    pw = compute_weekly_returns(prices)  # adds: 'ret_w', 'rv_w', 'excess_ret_next'
     fw = to_weekly_last(fred).interpolate(limit_direction="both")
     panel = assemble_panel(pw, fw).dropna()
     panel = panel[panel.index >= pd.to_datetime(start_date_str)]
@@ -112,16 +110,16 @@ if refresh:
 
 panel = load_panel(start_date.strftime("%Y-%m-%d"))
 
-# ---------------- REGIMES ----------------
+# =============================== REGIMES ===============================
 hmm_model, regimes = fit_hmm(panel, n_states=int(n_states), covariance_type="full", feature_cols=("ret_w", "rv_w"))
 panel["regime"] = align_regimes(panel.index, regimes)
 
-# ---------------- FEATURES/TARGET ----------------
+# =============================== FEATURES / TARGET ===============================
 feature_list = [c for c in FEATURE_SET if c in panel.columns]
 X = panel[feature_list].ffill().dropna()
 y = (panel["excess_ret_next"].reindex(X.index) > 0).astype(int)
 
-# ---------------- CV & OOF BACKTEST + SIGNALS ----------------
+# =============================== CV / OOF ===============================
 rows, equity_concat = [], []
 oof_proba, oof_y = [], []
 
@@ -137,7 +135,9 @@ for tr_idx, te_idx in rolling_windows(len(X), int(n_splits), int(test_size_weeks
     metrics = evaluate_cls(y_te, proba)
 
     ex_ret = panel["excess_ret_next"].reindex(dates_te)
-    bt = backtest_directional(dates_te, proba, ex_ret, trans_cost_bps=int(trans_cost_bps), turnover_cap=float(turnover_cap))
+    bt = backtest_directional(dates_te, proba, ex_ret,
+                              trans_cost_bps=int(trans_cost_bps),
+                              turnover_cap=float(turnover_cap))
 
     rows.append({
         **metrics,
@@ -153,14 +153,18 @@ cv_df = pd.DataFrame(rows)
 oof_proba = (pd.concat(oof_proba).sort_index() if oof_proba else pd.Series([], dtype=float))
 oof_y = (pd.concat(oof_y).sort_index().astype(int) if oof_y else pd.Series([], dtype=int))
 
-# ---------------- HEADER + KPIs ----------------
+# =============================== HEADER + KPIs ===============================
 st.markdown('<div class="title-gradient">📈 Macro-Regime Aware Index Forecasts — S&P 500 (Weekly)</div>', unsafe_allow_html=True)
 st.caption(f"Last updated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}. Research tool — not investment advice.")
 
 c1, c2, c3, c4 = st.columns(4)
 span = f"{panel.index.min().date()} → {panel.index.max().date()}"
 with c1:
-    st.markdown(f'<div class="card"><div class="kpi">Data span</div><div class="kpi-sub">{span}<br/>Rows: {len(panel):,}</div></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="card"><div class="kpi">Data span</div>'
+        f'<div class="kpi-sub">{span}<br/>Rows: {len(panel):,}</div></div>',
+        unsafe_allow_html=True,
+    )
 with c2:
     st.markdown(
         f'<div class="card"><div class="kpi">{cv_df["auc"].mean():.3f}</div><div class="kpi-sub">Mean AUC</div></div>'
@@ -177,17 +181,16 @@ with c4:
     val = f"{cv_df['cumret'].iloc[-1]:.2%}" if len(cv_df) else "—"
     st.markdown(f'<div class="card"><div class="kpi">{val}</div><div class="kpi-sub">CumRet (last fold)</div></div>', unsafe_allow_html=True)
 
-# ---------------- TABS ----------------
+# =============================== TABS ===============================
 tab0, tab1, tab2, tab3, tab4 = st.tabs(
     ["Beginner", "Overview", "Performance & QA", "Prediction (Simplified)", "Details"]
 )
 
-# ---- Beginner (plain language) ----
+# ---- Beginner ----
 with tab0:
     st.subheader("Beginner view — This week’s market outlook")
 
     def verdict_from_p(p: float, lo: float = 0.45, hi: float = 0.55):
-        """Return (label, emoji, color, note)."""
         if p >= hi:
             return "UP", "🟢", "#16a34a", "Model sees higher chance of gains vs cash."
         if p <= lo:
@@ -203,7 +206,7 @@ with tab0:
 
         lo, hi = 0.45, 0.55
         label, emoji, color, note = verdict_from_p(p, lo, hi)
-        confidence = min(100, abs(p - 0.5) * 200)  # 0–100
+        confidence = min(100, abs(p - 0.5) * 200)
 
         st.markdown(
             f"""
@@ -222,7 +225,6 @@ with tab0:
             """,
             unsafe_allow_html=True,
         )
-
         st.progress(int(confidence), text="Confidence")
 
         tail = panel["ret_w"].dropna().tail(52)
@@ -288,13 +290,13 @@ with tab2:
                            file_name="equity_oof.png", mime="image/png")
 
     if len(oof_proba) and len(oof_y):
+        from sklearn.metrics import roc_auc_score
         try:
             # Align OOF arrays
             y_true = oof_y.loc[oof_proba.index].astype(int).values
             y_score = oof_proba.values
 
             # --- ROC / PR / Calibration ---
-            from sklearn.metrics import roc_auc_score
             fpr, tpr, _ = roc_curve(y_true, y_score); roc_auc = auc(fpr, tpr)
             prec, rec, _ = precision_recall_curve(y_true, y_score)
             ap = average_precision_score(y_true, y_score)
@@ -315,36 +317,32 @@ with tab2:
 
             st.pyplot(fig_r); st.pyplot(fig_p); st.pyplot(fig_c)
 
-            # --- Rolling AUC (robust to pandas 2.x) ---
-            # --- Rolling AUC (robust to pandas 2.x) ---
-            from sklearn.metrics import roc_auc_score
-
+            # --- Rolling AUC (manual, pandas-2.x safe) ---
             oof_df = pd.DataFrame(
                 {"y": oof_y.loc[oof_proba.index].astype(int), "p": oof_proba},
-                index=oof_proba.index
+                index=oof_proba.index,
             ).sort_index()
 
-            def rolling_auc_series(y: pd.Series, p: pd.Series, window: int = 26) -> pd.Series:
+            def rolling_auc_series(y_ser: pd.Series, p_ser: pd.Series, window: int = 26) -> pd.Series:
                 vals, idxs = [], []
-                n = len(y)
+                n = len(y_ser)
                 for i in range(window, n + 1):
-                    yy = y.iloc[i-window:i]
-                    pp = p.iloc[i-window:i]
+                    yy = y_ser.iloc[i - window:i]
+                    pp = p_ser.iloc[i - window:i]
                     if yy.nunique() < 2 or pp.isna().any():
                         vals.append(np.nan)
                     else:
                         vals.append(roc_auc_score(yy.values, pp.values))
-                    idxs.append(y.index[i-1])
+                    idxs.append(y_ser.index[i - 1])
                 return pd.Series(vals, index=idxs, name="roll_auc")
 
             roll = rolling_auc_series(oof_df["y"], oof_df["p"], window=26)
 
             fig_roll, ax_roll = plt.subplots(figsize=(10, 3))
-            ax_roll.plot(roll.index, roll.values)   # <- NOTE: .values (not ["y"])
+            ax_roll.plot(roll.index, roll.values)  # <- Series.values (no ["y"])
             ax_roll.set_title("Rolling AUC (26 weeks)")
             ax_roll.grid(True)
             st.pyplot(fig_roll, use_container_width=True)
-
 
             # --- Threshold suggestion & OOF export ---
             ts = np.linspace(0.45, 0.55, 21)
