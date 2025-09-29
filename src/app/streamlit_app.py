@@ -316,31 +316,35 @@ with tab2:
             st.pyplot(fig_r); st.pyplot(fig_p); st.pyplot(fig_c)
 
             # --- Rolling AUC (robust to pandas 2.x) ---
+            # --- Rolling AUC (robust to pandas 2.x) ---
+            from sklearn.metrics import roc_auc_score
+
             oof_df = pd.DataFrame(
                 {"y": oof_y.loc[oof_proba.index].astype(int), "p": oof_proba},
-                index=oof_proba.index,
+                index=oof_proba.index
             ).sort_index()
 
             def rolling_auc_series(y: pd.Series, p: pd.Series, window: int = 26) -> pd.Series:
                 vals, idxs = [], []
                 n = len(y)
                 for i in range(window, n + 1):
-                    yy = y.iloc[i - window : i]
-                    pp = p.iloc[i - window : i]
+                    yy = y.iloc[i-window:i]
+                    pp = p.iloc[i-window:i]
                     if yy.nunique() < 2 or pp.isna().any():
                         vals.append(np.nan)
                     else:
                         vals.append(roc_auc_score(yy.values, pp.values))
-                    idxs.append(y.index[i - 1])
+                    idxs.append(y.index[i-1])
                 return pd.Series(vals, index=idxs, name="roll_auc")
 
             roll = rolling_auc_series(oof_df["y"], oof_df["p"], window=26)
 
             fig_roll, ax_roll = plt.subplots(figsize=(10, 3))
-            ax_roll.plot(roll.index, roll.values)
+            ax_roll.plot(roll.index, roll.values)   # <- NOTE: .values (not ["y"])
             ax_roll.set_title("Rolling AUC (26 weeks)")
             ax_roll.grid(True)
             st.pyplot(fig_roll, use_container_width=True)
+
 
             # --- Threshold suggestion & OOF export ---
             ts = np.linspace(0.45, 0.55, 21)
