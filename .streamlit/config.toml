@@ -1,5 +1,6 @@
+# .streamlit/config.toml
 [server]
-fileWatcherType = "none"   # stop using inotify
+fileWatcherType = "none"
 runOnSave = false
 
 [theme]
