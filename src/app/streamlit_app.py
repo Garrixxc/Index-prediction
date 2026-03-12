@@ -205,18 +205,23 @@ y = (panel["excess_ret_next"].reindex(X.index) > 0).astype(int)
 # LIVE PREDICTION (fast, fit on all-but-last)
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
-def live_pred(X_vals, y_vals, feature_cols, mtype):
-    X_df = pd.DataFrame(X_vals, columns=feature_cols)
-    y_s  = pd.Series(y_vals)
-    if len(X_df) <= 60:
+def live_pred(start_date_str: str, mtype: str, n_states: int):
+    panel = load_panel(start_date_str)
+    hmm_model, regimes = fit_hmm(panel, n_states=int(n_states), covariance_type="full", feature_cols=("ret_w","rv_w"))
+    panel["regime"] = align_regimes(panel.index, regimes)
+    feature_list = [c for c in FEATURE_SET if c in panel.columns]
+    X = panel[feature_list].ffill().dropna()
+    y = (panel["excess_ret_next"].reindex(X.index) > 0).astype(int)
+
+    if len(X) <= 60:
         return None, None
     mdl = make_baseline(mtype)
-    mdl.fit(X_df.iloc[:-1], y_s.iloc[:-1])
-    p = float(mdl.predict_proba(X_df.iloc[[-1]])[:, 1][0])
-    fi = get_feature_importance(mdl, feature_cols)
+    mdl.fit(X.iloc[:-1], y.iloc[:-1])
+    p = float(mdl.predict_proba(X.iloc[[-1]])[:, 1][0])
+    fi = get_feature_importance(mdl, feature_list)
     return p, fi
 
-p_live, feat_imp_live = live_pred(X.values, y.values, feature_list, model_type)
+p_live, feat_imp_live = live_pred(start_date.strftime("%Y-%m-%d"), model_type, n_states)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HEADER
@@ -429,10 +434,14 @@ class CVSettings:
     start_date_str: str; model_type: str
 
 @st.cache_data(show_spinner="⏳ Running walk-forward cross-validation…", ttl=24*3600)
-def run_cv_cached(panel_vals, panel_cols, panel_idx, X_vals, X_cols, y_vals, s: CVSettings):
-    panel = pd.DataFrame(panel_vals, columns=panel_cols, index=panel_idx)
-    X = pd.DataFrame(X_vals, columns=X_cols, index=panel_idx[:len(X_vals)])
-    y = pd.Series(y_vals, index=X.index)
+def run_cv_cached(s: CVSettings):
+    panel = load_panel(s.start_date_str)
+    hmm_model, regimes = fit_hmm(panel, n_states=int(s.n_states), covariance_type="full", feature_cols=("ret_w","rv_w"))
+    panel["regime"] = align_regimes(panel.index, regimes)
+    feature_list = [c for c in FEATURE_SET if c in panel.columns]
+    X = panel[feature_list].ffill().dropna()
+    y = (panel["excess_ret_next"].reindex(X.index) > 0).astype(int)
+
     rows, equity_list, oof_p, oof_y = [], [], [], []
     bnh_rets = []
     for tr_idx, te_idx in rolling_windows(len(X), s.n_splits, s.test_size_weeks, s.embargo_weeks):
@@ -469,10 +478,7 @@ s = CVSettings(int(n_splits), int(test_size_weeks), int(embargo_weeks),
                int(trans_cost_bps), float(turnover_cap), int(n_states),
                start_date.strftime("%Y-%m-%d"), model_type)
 
-cv_df, eq_full, bnh_full, oof_p_s, oof_y_s = run_cv_cached(
-    panel.values, list(panel.columns), panel.index,
-    X.values, feature_list, y.values, s
-)
+cv_df, eq_full, bnh_full, oof_p_s, oof_y_s = run_cv_cached(s)
 
 # Aggregate perf for header KPIs
 if len(cv_df):
