@@ -12,3 +12,6 @@ shap
 xgboost
 streamlit
 Pillow
+altair
+plotly
+scipy
