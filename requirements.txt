@@ -12,6 +12,6 @@ shap
 xgboost
 streamlit
 Pillow
-altair
+altair<5
 plotly
 scipy
