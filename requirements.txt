@@ -10,7 +10,7 @@ pyyaml
 tqdm
 shap
 xgboost
-streamlit
+streamlit>=1.40.0
 Pillow
 altair<5
 plotly
