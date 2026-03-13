@@ -24,3 +24,11 @@ signals_oof.csv
 .vscode/
 .idea/
 .DS_Store
+
+# Frontend
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+.next/
+node_modules/
