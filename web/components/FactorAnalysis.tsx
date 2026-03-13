@@ -25,7 +25,7 @@ export default function FactorAnalysis({ data }: { data: FactorData }) {
             <YAxis type="category" dataKey="feature" tick={{ fontSize: 11, fill: "#e2e8f0" }} tickLine={false} width={80} />
             <Tooltip
               contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number) => [v.toFixed(5), "Importance"]}
+              formatter={(v: any) => [v.toFixed(5), "Importance"]}
             />
             <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
               {[...topN].reverse().map((f, i) => (
@@ -51,8 +51,8 @@ export default function FactorAnalysis({ data }: { data: FactorData }) {
           ))}
           {/* Rows */}
           {correlation.features.map((rowF, i) => (
-            <>
-              <div key={`r${i}`} className="text-[10px] text-[var(--muted)] flex items-center pr-2 truncate">{rowF}</div>
+            <div key={`group-${i}`} className="contents">
+              <div className="text-[10px] text-[var(--muted)] flex items-center pr-2 truncate">{rowF}</div>
               {correlation.matrix[i].map((v, j) => {
                 const val = v ?? 0;
                 const absV = Math.abs(val);
@@ -67,7 +67,7 @@ export default function FactorAnalysis({ data }: { data: FactorData }) {
                   </div>
                 );
               })}
-            </>
+            </div>
           ))}
         </div>
       </div>
@@ -91,8 +91,8 @@ export default function FactorAnalysis({ data }: { data: FactorData }) {
                     tickFormatter={(v: number) => (v * 100).toFixed(1) + "%"} interval="preserveStartEnd" />
                   <YAxis tick={{ fontSize: 9, fill: "#64748b" }} tickLine={false} />
                   <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
-                    formatter={(v: number, n: string) => [v.toFixed(2), "Density"]}
-                    labelFormatter={(v: number) => `Return: ${(Number(v) * 100).toFixed(2)}%`} />
+                    formatter={(v: any, n: string) => [v.toFixed(2), "Density"]}
+                    labelFormatter={(v: any) => `Return: ${(Number(v) * 100).toFixed(2)}%`} />
                   <Bar dataKey="density" fill={COLORS[Number(r) % 4]} opacity={0.75} />
                 </BarChart>
               </ResponsiveContainer>

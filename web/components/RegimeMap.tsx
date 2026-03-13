@@ -111,8 +111,8 @@ export default function RegimeMap({ data }: { data: RegimeMapData }) {
             <div key={j} className="text-center text-[10px] text-[var(--muted)]">→ R{j}</div>
           ))}
           {transition_matrix.map((row, i) => (
-            <>
-              <div key={`h${i}`} className="text-[10px] text-[var(--muted)] flex items-center">R{i}</div>
+            <div key={`row-group-${i}`} className="contents">
+              <div className="text-[10px] text-[var(--muted)] flex items-center">R{i}</div>
               {row.map((v, j) => {
                 const opacity = 0.1 + v * 0.85;
                 return (
@@ -125,7 +125,7 @@ export default function RegimeMap({ data }: { data: RegimeMapData }) {
                   </div>
                 );
               })}
-            </>
+            </div>
           ))}
         </div>
       </div>

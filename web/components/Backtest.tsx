@@ -57,7 +57,7 @@ export default function Backtest({ data }: { data: BacktestData }) {
               tickFormatter={d => d.slice(0, 7)} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickLine={false} />
             <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number, n: string) => [v.toFixed(3), n === "strategy" ? "Strategy" : "Buy & Hold"]} />
+              formatter={(v: any, n: any) => [v.toFixed(3), n === "strategy" ? "Strategy" : "Buy & Hold"]} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <ReferenceLine y={1} stroke="#64748b" strokeDasharray="4 4" strokeWidth={0.8} />
             <Line type="monotone" dataKey="strategy" stroke="#00d4aa" strokeWidth={2} dot={false} name="Strategy" />
@@ -82,7 +82,7 @@ export default function Backtest({ data }: { data: BacktestData }) {
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickLine={false}
               tickFormatter={v => pct(v, 0)} />
             <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number) => [pct(v), "Drawdown"]} />
+              formatter={(v: any) => [pct(v), "Drawdown"]} />
             <Area type="monotone" dataKey="drawdown" stroke="#ef4444" fill="url(#ddGrad)" strokeWidth={1} dot={false} />
           </AreaChart>
         </ResponsiveContainer>

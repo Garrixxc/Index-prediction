@@ -74,7 +74,7 @@ export default function ModelQA({ data }: { data: BacktestData }) {
               <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickLine={false}
                 label={{ value: "TPR", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }} />
               <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => [v.toFixed(3)]} />
+                formatter={(v: any) => [v.toFixed(3)]} />
               <ReferenceLine x={0} y={0} stroke="#64748b" strokeDasharray="4 4" />
               {/* diagonal */}
               <Line dataKey="fpr" stroke="none" legendType="none" />
@@ -94,7 +94,7 @@ export default function ModelQA({ data }: { data: BacktestData }) {
               <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickLine={false}
                 domain={["auto", "auto"]} tickFormatter={(v: number) => (v * 100).toFixed(0) + "%"} />
               <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => [(v * 100).toFixed(1) + "%", "Accuracy"]} />
+                formatter={(v: any) => [(v * 100).toFixed(1) + "%", "Accuracy"]} />
               <ReferenceLine x={0.5} stroke="#64748b" strokeDasharray="4 4" />
               <Line type="monotone" dataKey="acc" stroke="#7c3aed" strokeWidth={2} dot={false} />
             </LineChart>
@@ -112,7 +112,7 @@ export default function ModelQA({ data }: { data: BacktestData }) {
               tickFormatter={d => d.slice(0, 7)} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickLine={false} domain={[0.3, 0.8]} />
             <Tooltip contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number) => [v?.toFixed(3), "AUC"]} />
+              formatter={(v: any) => [v?.toFixed(3), "AUC"]} />
             <ReferenceLine y={0.5} stroke="#64748b" strokeDasharray="4 4" />
             <Bar dataKey="auc" fill="#00d4aa" opacity={0.8} radius={[2,2,0,0]} />
           </BarChart>
