@@ -1,0 +1,15 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pandas
+numpy
+scikit-learn
+matplotlib
+yfinance
+fredapi
+hmmlearn
+statsmodels
+pyyaml
+shap
+xgboost
+Pillow
+scipy
