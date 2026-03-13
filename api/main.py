@@ -91,6 +91,16 @@ def _df_to_records(df: pd.DataFrame, date_col: str = "date") -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
+@app.get("/")
+def home():
+    return {
+        "message": "Quant Terminal API is running.",
+        "version": "2.0.0",
+        "docs": "/docs",
+        "frontend": "http://localhost:3000"
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

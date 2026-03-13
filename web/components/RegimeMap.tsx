@@ -44,10 +44,7 @@ export default function RegimeMap({ data }: { data: RegimeMapData }) {
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickLine={false} />
             <Tooltip
               contentStyle={{ background: "#0d1117", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number, name: string) => [
-                name === "close" ? v.toFixed(0) : v.toFixed(4),
-                name === "close" ? "S&P 500" : name,
-              ]}
+              formatter={(v: any) => [v.toFixed(3), "Equity"]}
             />
             <Line type="monotone" dataKey="close" stroke="#e2e8f0" strokeWidth={1.2} dot={false} />
           </ComposedChart>
